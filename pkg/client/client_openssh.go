@@ -73,7 +73,7 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 			},
 			Wait: cmd.Wait,
 			Close: func() error {
-				return cmd.Process.Kill()
+				return cmd.Process.Signal(os.Interrupt)
 			},
 		})
 	}

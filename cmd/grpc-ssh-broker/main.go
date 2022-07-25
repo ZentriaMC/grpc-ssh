@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
 
@@ -30,41 +32,52 @@ func main() {
 		}
 	}
 
+	if err := configureLogging(true); err != nil {
+		panic(err)
+	}
+
+	defer func() { _ = zap.L().Sync() }()
+
 	if err := entrypoint(args, sshForceCommand); err != nil {
 		exitError := &ExitError{}
 		exitCode := 1
 		if errors.As(err, &exitError) {
-			fmt.Fprintf(os.Stderr, "%s\n", exitError.Error())
+			zap.L().With(zap.String("section", "broker")).Error("exit", zap.Error(exitError.Unwrap()))
 			exitCode = exitError.code
 		} else {
-			fmt.Fprintf(os.Stderr, "unhandled error: %s\n", err)
+			zap.L().With(zap.String("section", "broker")).Error("unhandled error", zap.Error(err))
 		}
+
+		_ = zap.L().Sync() // os.Exit does not run deferreds
 		os.Exit(exitCode)
 	}
 }
 
 func entrypoint(args []string, sshForceCommand bool) (err error) {
-	fmt.Fprintf(os.Stderr, "version: %s\n", core.Version)
-
-	fmt.Fprintf(os.Stderr, "v=%s\n", os.Getenv("SSH_CONNECTION"))
-	fmt.Fprintf(os.Stderr, "v=%s\n", os.Getenv("SSH_CLIENT"))
-	fmt.Fprintf(os.Stderr, "v=%s\n", os.Getenv("SSH_ORIGINAL_COMMAND"))
+	zap.L().With(zap.String("section", "broker")).Debug("init", zap.String("version", core.Version))
+	zap.L().With(zap.String("section", "broker")).Debug("args", zap.Strings("value", args))
+	zap.L().With(zap.String("section", "broker")).Debug("ssh original command", zap.String("value", os.Getenv("SSH_ORIGINAL_COMMAND")))
 
 	serviceName := args[2]
 
-	raw, err := ioutil.ReadFile("./examples/grpc-ssh-broker.services.yaml")
-	if err != nil {
-		panic(err)
+	configPath := "./examples/grpc-ssh-broker.services.yaml"
+	zap.L().With(zap.String("section", "broker")).Debug("loading configuration", zap.String("path", configPath))
+
+	var f *os.File
+	if f, err = os.OpenFile(configPath, os.O_RDONLY, 0); err != nil {
+		err = fmt.Errorf("unable to open configuration at '%s': %w", configPath, err)
+		return
 	}
 
 	var config broker.Configuration
-	if err := yaml.Unmarshal(raw, &config); err != nil {
-		panic(err)
+	if err = yaml.NewDecoder(f).Decode(&config); err != nil {
+		err = fmt.Errorf("unable to parse configuration at '%s': %w", configPath, err)
+		return
 	}
 
 	url, ok := config.DetermineTargetURL(serviceName, "")
 	if !ok {
-		err = NewExitError(fmt.Errorf("no such service: %s", serviceName), 1)
+		err = NewExitError(fmt.Errorf("no such service: '%s'", serviceName), 2)
 		return
 	}
 
@@ -96,7 +109,7 @@ func openConnection(targetURL string, tlsConfig *broker.TLSConfig) (err error) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "connecting=%s protocol=%s\n", address, protocol)
+	zap.L().With(zap.String("section", "broker")).Debug("connecting", zap.String("address", address), zap.String("protocol", protocol))
 
 	var conn net.Conn
 	if requiresTLS && (tlsConfig == nil || !tlsConfig.FromRemote) {
@@ -142,22 +155,42 @@ func openConnection(targetURL string, tlsConfig *broker.TLSConfig) (err error) {
 	defer cancel()
 
 	go func() {
-		_, err := io.Copy(conn, os.Stdin)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "stdin copy err=%s\n", err)
-		}
+		_, _ = io.Copy(conn, os.Stdin)
 		cancel()
 	}()
 
 	go func() {
-		_, err := io.Copy(os.Stdout, conn)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "stdout copy err=%s\n", err)
-		}
+		_, _ = io.Copy(os.Stdout, conn)
 		cancel()
 	}()
 
 	<-ctx.Done()
 
+	return
+}
+
+func configureLogging(debugMode bool) (err error) {
+	var cfg zap.Config
+
+	if debugMode {
+		cfg = zap.NewDevelopmentConfig()
+		cfg.Level.SetLevel(zapcore.DebugLevel)
+		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.Development = false
+	} else {
+		cfg = zap.NewProductionConfig()
+		cfg.Level.SetLevel(zapcore.InfoLevel)
+	}
+
+	cfg.OutputPaths = []string{
+		"stderr",
+	}
+
+	logger, err := cfg.Build()
+	if err != nil {
+		return err
+	}
+
+	_ = zap.ReplaceGlobals(logger)
 	return
 }

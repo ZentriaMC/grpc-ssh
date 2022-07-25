@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 	sshagent "golang.org/x/crypto/ssh/agent"
 )
@@ -49,8 +50,9 @@ func NewNativeDialer(target SSHConnectionDetails) (dialer SSHDialer, err error) 
 
 	if target.EnableAgent {
 		if aerr := s.connectAgent(); aerr != nil {
-			fmt.Fprintf(os.Stderr, "failed to connect to ssh agent: %s\n", err)
+			zap.L().With(zap.String("section", "native-ssh-dialer")).Warn("failed to connect to ssh agent", zap.Error(err))
 		} else if s.agentConn != nil {
+			zap.L().With(zap.String("section", "native-ssh-dialer")).Debug("connected to ssh agent")
 			sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeysCallback(s.agent.Signers))
 		}
 	}

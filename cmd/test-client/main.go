@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
@@ -15,13 +17,19 @@ import (
 )
 
 func main() {
+	if err := configureLogging(true); err != nil {
+		panic(err)
+	}
+
+	defer func() { _ = zap.L().Sync() }()
+
 	if err := entrypoint(); err != nil {
-		fmt.Fprintf(os.Stderr, "unhandled error: %s\n", err)
+		zap.L().With(zap.String("section", "test-client")).Error("unhandled error", zap.Error(err))
 	}
 }
 
 func entrypoint() (err error) {
-	fmt.Println("version:", core.Version)
+	zap.L().With(zap.String("section", "test-client")).Debug("init", zap.String("version", core.Version))
 
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
@@ -63,5 +71,31 @@ func entrypoint() (err error) {
 
 	fmt.Printf("%+v\n", res)
 
+	return
+}
+
+func configureLogging(debugMode bool) (err error) {
+	var cfg zap.Config
+
+	if debugMode {
+		cfg = zap.NewDevelopmentConfig()
+		cfg.Level.SetLevel(zapcore.DebugLevel)
+		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.Development = false
+	} else {
+		cfg = zap.NewProductionConfig()
+		cfg.Level.SetLevel(zapcore.InfoLevel)
+	}
+
+	cfg.OutputPaths = []string{
+		"stderr",
+	}
+
+	logger, err := cfg.Build()
+	if err != nil {
+		return err
+	}
+
+	_ = zap.ReplaceGlobals(logger)
 	return
 }

@@ -1,28 +1,26 @@
 package client
 
 import (
+	"errors"
 	"io"
 	"net"
+	"os/exec"
 	"sync"
 	"time"
 
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
 )
 
 var _ net.Conn = &WrappedConn{}
 
 type WrappedConn struct {
+	WrappedConnAdapter
 	closed bool
 	mtx    sync.Mutex
 
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-
-	getReadPipe  func() io.ReadCloser
-	getWritePipe func() io.WriteCloser
-	start        func() error
-	wait         func() error
-	close        func() error
 }
 
 type WrappedConnAdapter struct {
@@ -35,16 +33,12 @@ type WrappedConnAdapter struct {
 
 func NewWrappedConn(adapter WrappedConnAdapter) (w *WrappedConn, err error) {
 	w = &WrappedConn{
-		getReadPipe:  adapter.GetReadPipe,
-		getWritePipe: adapter.GetWritePipe,
-		start:        adapter.Start,
-		wait:         adapter.Wait,
-		close:        adapter.Close,
+		WrappedConnAdapter: adapter,
 	}
 
-	w.stdin = w.getWritePipe()
-	w.stdout = w.getReadPipe()
-	if err = w.start(); err != nil {
+	w.stdin = w.GetWritePipe()
+	w.stdout = w.GetReadPipe()
+	if err = w.Start(); err != nil {
 		return
 	}
 
@@ -54,8 +48,16 @@ func NewWrappedConn(adapter WrappedConnAdapter) (w *WrappedConn, err error) {
 }
 
 func (w *WrappedConn) waitCommand() {
-	_ = w.wait()
-	_ = w.Close()
+	err := w.Wait()
+	var stderr *string
+	if eerr := (*exec.ExitError)(nil); errors.As(err, &eerr) {
+		v := string(eerr.Stderr)
+		stderr = &v
+	}
+
+	zap.L().With(zap.String("section", "wrappedconn")).Debug("wait done, closing", zap.Error(err), zap.Stringp("stderr", stderr))
+	err = w.Close()
+	zap.L().With(zap.String("section", "wrappedconn")).Debug("closed", zap.Error(err))
 }
 
 func (w *WrappedConn) Read(p []byte) (n int, err error) {
@@ -74,7 +76,7 @@ func (w *WrappedConn) Close() (err error) {
 	}
 	err = multierr.Append(err, w.stdout.Close())
 	err = multierr.Append(err, w.stdin.Close())
-	err = multierr.Append(err, w.close())
+	err = multierr.Append(err, w.WrappedConnAdapter.Close())
 	w.closed = true
 	return
 }
