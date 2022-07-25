@@ -9,13 +9,17 @@ import (
 	"os/user"
 	"time"
 
+	"go.uber.org/atomic"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zapio"
 	"golang.org/x/crypto/ssh"
 	sshagent "golang.org/x/crypto/ssh/agent"
 )
 
 type NativeSSHDialer struct {
+	counter   atomic.Int64
 	agentConn net.Conn
 	agent     sshagent.Agent
 	sshConn   *ssh.Client
@@ -94,8 +98,10 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 			return
 		}
 
-		// TODO: wire stderr to a logger
-		session.Stderr = os.Stderr
+		session.Stderr = &zapio.Writer{
+			Log:   zap.L().With(zap.String("section", "native-ssh-dialer"), zap.Int64("n", s.counter.Inc()), zap.String("output", "ssh-stderr")),
+			Level: zapcore.InfoLevel,
+		}
 
 		return NewWrappedConn(WrappedConnAdapter{
 			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
@@ -108,10 +114,7 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 			},
 			Start: func() error {
 				cmd := fmt.Sprintf("grpc-ssh-broker client %s", addr)
-				if err := session.Start(cmd); err != nil {
-					return fmt.Errorf("failed to start command: %w", err)
-				}
-				return nil
+				return session.Start(cmd)
 			},
 			Wait:  session.Wait,
 			Close: session.Close,

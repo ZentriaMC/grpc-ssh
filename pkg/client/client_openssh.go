@@ -9,10 +9,15 @@ import (
 	"os"
 	"os/exec"
 
+	"go.uber.org/atomic"
 	"go.uber.org/multierr"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zapio"
 )
 
 type OpenSSHDialer struct {
+	counter   atomic.Int64
 	sshPath   string
 	details   SSHConnectionDetails
 	socketDir string
@@ -53,6 +58,11 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		cmd := s.createClient(addr)
 
+		cmd.Stderr = &zapio.Writer{
+			Log:   zap.L().With(zap.String("section", "openssh-dialer"), zap.Int64("n", s.counter.Inc()), zap.String("output", "ssh-stderr")),
+			Level: zapcore.InfoLevel,
+		}
+
 		return NewWrappedConn(WrappedConnAdapter{
 			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
 				stdoutPipe, _ = cmd.StdoutPipe()
@@ -62,16 +72,8 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 				stdinPipe, _ = cmd.StdinPipe()
 				return
 			},
-			Start: func() error {
-				// TODO: wire stderr to a logger
-				cmd.Stderr = os.Stderr
-
-				if err := cmd.Start(); err != nil {
-					return fmt.Errorf("failed to start command: %w", err)
-				}
-				return nil
-			},
-			Wait: cmd.Wait,
+			Start: cmd.Start,
+			Wait:  cmd.Wait,
 			Close: func() error {
 				return cmd.Process.Signal(os.Interrupt)
 			},
