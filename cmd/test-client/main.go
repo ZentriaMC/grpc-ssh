@@ -22,7 +22,7 @@ func main() {
 func entrypoint() (err error) {
 	fmt.Println("version:", core.Version)
 
-	var dialer *client.SSHDialer
+	var dialer client.SSHDialer
 	var conn *grpc.ClientConn
 	var res *pb.HelloReply
 
