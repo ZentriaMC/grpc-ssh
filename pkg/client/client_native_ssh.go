@@ -49,7 +49,7 @@ func NewNativeDialer(target SSHConnectionDetails) (dialer SSHDialer, err error) 
 
 	if target.EnableAgent {
 		if aerr := s.connectAgent(); aerr != nil {
-			fmt.Fprintf(os.Stderr, "failed to connect to ssh agent: %w\n", err)
+			fmt.Fprintf(os.Stderr, "failed to connect to ssh agent: %s\n", err)
 		} else if s.agentConn != nil {
 			sshConfig.Auth = append(sshConfig.Auth, ssh.PublicKeysCallback(s.agent.Signers))
 		}
