@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -21,6 +22,10 @@ func main() {
 
 func entrypoint() (err error) {
 	fmt.Println("version:", core.Version)
+
+	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	defer cancel()
 
 	var dialer client.SSHDialer
 	var conn *grpc.ClientConn
@@ -40,12 +45,11 @@ func entrypoint() (err error) {
 		grpc.WithContextDialer(dialer.Dialer()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
-	if conn, err = grpc.Dial("helloworld", dialOpts...); err != nil {
+	if conn, err = grpc.DialContext(ctx, "helloworld", dialOpts...); err != nil {
 		return
 	}
 	defer conn.Close()
 
-	ctx := context.Background()
 	c := pb.NewGreeterClient(conn)
 
 	res, err = c.SayHello(ctx, &pb.HelloRequest{
