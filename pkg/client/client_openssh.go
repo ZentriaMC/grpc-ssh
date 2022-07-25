@@ -44,7 +44,10 @@ func NewOpenSSHDialer(target SSHConnectionDetails) (dialer SSHDialer, err error)
 	}
 
 	master := s.createMaster()
-	master.Stderr = os.Stderr
+	master.Stderr = &zapio.Writer{
+		Log:   zap.L().With(zap.String("section", "openssh-dialer"), zap.String("instance", "master"), zap.String("output", "ssh-stderr")),
+		Level: zapcore.InfoLevel,
+	}
 	if err = master.Run(); err != nil {
 		err = fmt.Errorf("failed to start ssh master: %w", err)
 		return
@@ -81,10 +84,16 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 	}
 }
 
-func (s *OpenSSHDialer) Close() (err error) {
-	args := []string{
-		"-O", "stop",
+func (s *OpenSSHDialer) commonArgs(extra []string) (args []string) {
+	args = append(args, []string{
+		"-x",
+		"-oBatchMode=yes",
+		"-oClearAllForwardings=yes",
 		fmt.Sprintf("-oControlPath=%s/%s", s.socketDir, "%C"),
+	}...)
+
+	if !s.details.EnableAgent {
+		args = append(args, "-oIdentityAgent=none")
 	}
 
 	if s.details.User != "" {
@@ -95,7 +104,15 @@ func (s *OpenSSHDialer) Close() (err error) {
 		args = append(args, fmt.Sprintf("-oPort=%d", s.details.Port))
 	}
 
-	args = append(args, s.details.Hostname)
+	args = append(args, extra...)
+	return
+}
+
+func (s *OpenSSHDialer) Close() (err error) {
+	args := s.commonArgs([]string{
+		"-O", "stop",
+		s.details.Hostname,
+	})
 
 	cmd := exec.Command(s.sshPath, args...)
 	if err = cmd.Run(); err != nil {
@@ -106,57 +123,20 @@ func (s *OpenSSHDialer) Close() (err error) {
 }
 
 func (s *OpenSSHDialer) createMaster() *exec.Cmd {
-	args := []string{
-		"-x",
+	args := s.commonArgs([]string{
 		"-N",
 		"-f",
-		"-oBatchMode=yes",
-		"-oClearAllForwardings=yes",
-		"-oSessionType=default",
 		"-oControlMaster=auto",
-		fmt.Sprintf("-oControlPath=%s/%s", s.socketDir, "%C"),
-	}
-
-	if !s.details.EnableAgent {
-		args = append(args, "-oIdentityAgent=none")
-	}
-
-	if s.details.User != "" {
-		args = append(args, "-oUser="+s.details.User)
-	}
-
-	if s.details.Port != 0 {
-		args = append(args, fmt.Sprintf("-oPort=%d", s.details.Port))
-	}
-
-	args = append(args, s.details.Hostname)
+		s.details.Hostname,
+	})
 	return exec.Command(s.sshPath, args...)
 }
 
 func (s *OpenSSHDialer) createClient(target string) *exec.Cmd {
-	remoteCommand := fmt.Sprintf("grpc-ssh-broker client %s", target)
-
-	args := []string{
-		"-x",
-		"-oBatchMode=yes",
-		"-oClearAllForwardings=yes",
-		"-oSessionType=default",
+	args := s.commonArgs([]string{
 		"-oControlMaster=no",
-		fmt.Sprintf("-oControlPath=%s/%s", s.socketDir, "%C"),
-	}
-
-	if !s.details.EnableAgent {
-		args = append(args, "-oIdentityAgent=none")
-	}
-
-	if s.details.User != "" {
-		args = append(args, "-oUser="+s.details.User)
-	}
-
-	if s.details.Port != 0 {
-		args = append(args, fmt.Sprintf("-oPort=%d", s.details.Port))
-	}
-
-	args = append(args, s.details.Hostname, remoteCommand)
+		s.details.Hostname,
+		"grpc-ssh-broker client " + target,
+	})
 	return exec.Command(s.sshPath, args...)
 }
