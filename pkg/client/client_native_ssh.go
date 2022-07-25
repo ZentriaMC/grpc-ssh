@@ -9,7 +9,6 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/hashicorp/yamux"
 	"go.uber.org/multierr"
 	"golang.org/x/crypto/ssh"
 	sshagent "golang.org/x/crypto/ssh/agent"
@@ -95,8 +94,6 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 
 		// TODO: wire stderr to a logger
 		session.Stderr = os.Stderr
-
-		_ = yamux.ErrConnectionReset
 
 		return NewWrappedConn(WrappedConnAdapter{
 			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
