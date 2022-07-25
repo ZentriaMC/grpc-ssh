@@ -44,10 +44,13 @@ func NewOpenSSHDialer(target SSHConnectionDetails) (dialer SSHDialer, err error)
 	}
 
 	master := s.createMaster()
-	master.Stderr = &zapio.Writer{
+	stderrWriter := &zapio.Writer{
 		Log:   zap.L().With(zap.String("section", "openssh-dialer"), zap.String("instance", "master"), zap.String("output", "ssh-stderr")),
 		Level: zapcore.InfoLevel,
 	}
+	defer stderrWriter.Close()
+	master.Stderr = stderrWriter
+
 	if err = master.Run(); err != nil {
 		err = fmt.Errorf("failed to start ssh master: %w", err)
 		return
@@ -61,10 +64,11 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		cmd := s.createClient(addr)
 
-		cmd.Stderr = &zapio.Writer{
-			Log:   zap.L().With(zap.String("section", "openssh-dialer"), zap.Int64("n", s.counter.Inc()), zap.String("output", "ssh-stderr")),
+		stderrWriter := &zapio.Writer{
+			Log:   zap.L().With(zap.String("section", "openssh-dialer"), zap.String("instance", "client"), zap.Int64("n", s.counter.Inc()), zap.String("output", "ssh-stderr")),
 			Level: zapcore.InfoLevel,
 		}
+		cmd.Stderr = stderrWriter
 
 		return NewWrappedConn(WrappedConnAdapter{
 			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
@@ -76,7 +80,10 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 				return
 			},
 			Start: cmd.Start,
-			Wait:  cmd.Wait,
+			Wait: func() error {
+				defer stderrWriter.Close()
+				return cmd.Wait()
+			},
 			Close: func() error {
 				return cmd.Process.Signal(os.Interrupt)
 			},
