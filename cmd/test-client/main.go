@@ -41,6 +41,8 @@ func entrypoint() (err error) {
 		return
 	}
 
+	defer dialer.Close()
+
 	dialOpts := []grpc.DialOption{
 		grpc.WithContextDialer(dialer.Dialer()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
