@@ -93,6 +93,9 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 			return
 		}
 
+		// TODO: wire stderr to a logger
+		session.Stderr = os.Stderr
+
 		_ = yamux.ErrConnectionReset
 
 		return NewWrappedConn(WrappedConnAdapter{
@@ -105,9 +108,6 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 				return
 			},
 			Start: func() error {
-				// TODO: wire stderr to a logger
-				session.Stderr = os.Stderr
-
 				cmd := fmt.Sprintf("grpc-ssh-broker client %s", addr)
 				if err := session.Start(cmd); err != nil {
 					return fmt.Errorf("failed to start command: %w", err)
