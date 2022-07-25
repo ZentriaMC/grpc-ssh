@@ -7,30 +7,30 @@ services:
     url: "http://127.0.0.1:50052"
 
   # maybe merging multiple services together could be useful too (could use nginx/envoy)?
-  #- name: "merged"
-  #  urls:
-  #    - paths: [ "/helloworld.Greeter" ]
-  #      url: "http://127.0.0.1:50051"
-  #
-  #    - paths: [ "/routeguide.RouteGuide" ]
-  #      url: "http://127.0.0.1:50052"
-  #
+  - name: "merged"
+    urls:
+      - paths: [ "/helloworld.Greeter" ]
+        url: "http://127.0.0.1:50051"
+
+      - paths: [ "/routeguide.RouteGuide" ]
+        url: "http://127.0.0.1:50052"
+
 
   # possibly needed in future
-  #- name: "complex"
-  #  url: "https://127.0.0.1:50053"
-  #  tls:
-  #    # note: if `urls` is used, then it will take tls from service configuration by default, but can be overriden per service url basis
-  #
-  #    from_remote: false # <-- needs better name; controls if certs will be taken from the client instead of broker
-  #    ca: "path/to/ca.pem"
-  #    certificate: "path/to/client.pem" # mTLS
-  #    key: "path/to/client-key.pem" # mTLS
-  #  header:
-  #   foo:
-  #     - bar
-  #     - baz
-  #  trailer:
-  #   foo:
-  #     - bar
-  #     - baz
+  - name: "complex"
+    url: "https://127.0.0.1:50053"
+    tls:
+      # note: if `urls` is used, then it will take tls from service configuration by default, but can be overriden per service url basis
+
+      from_remote: false # <-- needs better name; controls if certs will be taken from the client instead of broker
+      ca: "path/to/ca.pem"
+      certificate: "path/to/client.pem" # mTLS
+      key: "path/to/client-key.pem" # mTLS
+    header:
+     foo:
+       - bar
+       - baz
+    trailer:
+     foo:
+       - bar
+       - baz
