@@ -121,13 +121,13 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 }
 
 func (s *NativeSSHDialer) Close() (err error) {
+	if s.sshConn != nil {
+		err = multierr.Append(err, s.sshConn.Close())
+	}
 	if s.agentConn != nil {
 		err = multierr.Append(err, s.agentConn.Close())
 		s.agentConn = nil
 		s.agent = nil
-	}
-	if s.sshConn != nil {
-		err = multierr.Append(err, s.sshConn.Close())
 	}
 	return
 }
