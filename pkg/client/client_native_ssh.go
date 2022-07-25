@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/user"
@@ -94,9 +95,26 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 
 		_ = yamux.ErrConnectionReset
 
-		cmd := fmt.Sprintf("grpc-ssh-broker client %s", addr)
-		conn, err = NewWrappedConn(session, cmd)
-		return
+		return NewWrappedConn(WrappedConnAdapter{
+			SetReadPipe: func(r io.Reader) {
+				session.Stdin = r
+			},
+			SetWritePipe: func(w io.Writer) {
+				session.Stdout = w
+			},
+			Start: func() error {
+				// TODO: wire stderr to a logger
+				session.Stderr = os.Stderr
+
+				cmd := fmt.Sprintf("grpc-ssh-broker client %s", addr)
+				if err := session.Start(cmd); err != nil {
+					return fmt.Errorf("failed to start command: %w", err)
+				}
+				return nil
+			},
+			Wait:  session.Wait,
+			Close: session.Close,
+		})
 	}
 }
 

@@ -32,6 +32,8 @@ func NewDialer(target SSHConnectionDetails) (dialer SSHDialer, err error) {
 		dialer, err = NewOpenSSHDialer(target)
 		if err != nil && !errors.Is(err, ErrNoOpenSSHClient) {
 			return nil, err
+		} else if err == nil {
+			return
 		}
 	}
 

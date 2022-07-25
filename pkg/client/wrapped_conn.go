@@ -1,40 +1,55 @@
 package client
 
 import (
-	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 	"time"
 
 	"go.uber.org/multierr"
-	"golang.org/x/crypto/ssh"
 )
 
 var _ net.Conn = &WrappedConn{}
 
 type WrappedConn struct {
-	session *ssh.Session
-	mtx     sync.Mutex
+	closed bool
+	mtx    sync.Mutex
 
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+
+	setReadPipe  func(io.Reader)
+	setWritePipe func(io.Writer)
+	start        func() error
+	wait         func() error
+	close        func() error
 }
 
-func NewWrappedConn(session *ssh.Session, cmd string) (w *WrappedConn, err error) {
+type WrappedConnAdapter struct {
+	SetReadPipe  func(io.Reader)
+	SetWritePipe func(io.Writer)
+	Start        func() error
+	Wait         func() error
+	Close        func() error
+}
+
+func NewWrappedConn(adapter WrappedConnAdapter) (w *WrappedConn, err error) {
 	w = &WrappedConn{
-		session: session,
+		setReadPipe:  adapter.SetReadPipe,
+		setWritePipe: adapter.SetWritePipe,
+		start:        adapter.Start,
+		wait:         adapter.Wait,
+		close:        adapter.Close,
 	}
 
-	w.session.Stdin, w.stdin = io.Pipe()
-	w.stdout, w.session.Stdout = io.Pipe()
+	var readPipe io.Reader
+	var writePipe io.Writer
+	readPipe, w.stdin = io.Pipe()
+	w.stdout, writePipe = io.Pipe()
 
-	// TODO: wire stderr to a logger
-	w.session.Stderr = os.Stderr
-
-	if err = w.session.Start(cmd); err != nil {
-		err = fmt.Errorf("failed to start command: %w", err)
+	w.setReadPipe(readPipe)
+	w.setWritePipe(writePipe)
+	if err = w.start(); err != nil {
 		return
 	}
 
@@ -44,10 +59,7 @@ func NewWrappedConn(session *ssh.Session, cmd string) (w *WrappedConn, err error
 }
 
 func (w *WrappedConn) waitCommand() {
-	err := w.session.Wait()
-	if err != nil {
-		fmt.Printf("wait err: %s\n", err)
-	}
+	_ = w.wait()
 	_ = w.Close()
 }
 
@@ -62,9 +74,13 @@ func (w *WrappedConn) Write(b []byte) (n int, err error) {
 func (w *WrappedConn) Close() (err error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
+	if w.closed {
+		return
+	}
 	err = multierr.Append(err, w.stdout.Close())
 	err = multierr.Append(err, w.stdin.Close())
-	err = multierr.Append(err, w.session.Close())
+	err = multierr.Append(err, w.close())
+	w.closed = true
 	return
 }
 

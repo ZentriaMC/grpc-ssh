@@ -27,8 +27,6 @@ func main() {
 		args = strings.Split(cmd, " ")
 		if len(args) <= 1 {
 			args = []string{}
-		} else {
-			args = args[1:]
 		}
 	}
 
@@ -52,7 +50,7 @@ func entrypoint(args []string, sshForceCommand bool) (err error) {
 	fmt.Fprintf(os.Stderr, "v=%s\n", os.Getenv("SSH_CLIENT"))
 	fmt.Fprintf(os.Stderr, "v=%s\n", os.Getenv("SSH_ORIGINAL_COMMAND"))
 
-	serviceName := args[1]
+	serviceName := args[2]
 
 	raw, err := ioutil.ReadFile("./examples/grpc-ssh-broker.services.yaml")
 	if err != nil {
