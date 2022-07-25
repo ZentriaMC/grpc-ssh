@@ -18,16 +18,16 @@ type WrappedConn struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 
-	setReadPipe  func(io.Reader)
-	setWritePipe func(io.Writer)
+	getReadPipe  func() io.ReadCloser
+	getWritePipe func() io.WriteCloser
 	start        func() error
 	wait         func() error
 	close        func() error
 }
 
 type WrappedConnAdapter struct {
-	SetReadPipe  func(io.Reader)
-	SetWritePipe func(io.Writer)
+	GetReadPipe  func() io.ReadCloser
+	GetWritePipe func() io.WriteCloser
 	Start        func() error
 	Wait         func() error
 	Close        func() error
@@ -35,20 +35,15 @@ type WrappedConnAdapter struct {
 
 func NewWrappedConn(adapter WrappedConnAdapter) (w *WrappedConn, err error) {
 	w = &WrappedConn{
-		setReadPipe:  adapter.SetReadPipe,
-		setWritePipe: adapter.SetWritePipe,
+		getReadPipe:  adapter.GetReadPipe,
+		getWritePipe: adapter.GetWritePipe,
 		start:        adapter.Start,
 		wait:         adapter.Wait,
 		close:        adapter.Close,
 	}
 
-	var readPipe io.Reader
-	var writePipe io.Writer
-	readPipe, w.stdin = io.Pipe()
-	w.stdout, writePipe = io.Pipe()
-
-	w.setReadPipe(readPipe)
-	w.setWritePipe(writePipe)
+	w.stdin = w.getWritePipe()
+	w.stdout = w.getReadPipe()
 	if err = w.start(); err != nil {
 		return
 	}

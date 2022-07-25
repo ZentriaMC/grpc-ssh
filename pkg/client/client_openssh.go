@@ -36,13 +36,14 @@ func (s *OpenSSHDialer) Dialer() GRPCDialer {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		cmd := s.createClient(addr)
 
-		// TODO: detect SSH client connection failure, otherwise this takes quite a while to time out
 		return NewWrappedConn(WrappedConnAdapter{
-			SetReadPipe: func(r io.Reader) {
-				cmd.Stdin = r
+			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
+				stdoutPipe, _ = cmd.StdoutPipe()
+				return stdoutPipe
 			},
-			SetWritePipe: func(w io.Writer) {
-				cmd.Stdout = w
+			GetWritePipe: func() (stdinPipe io.WriteCloser) {
+				stdinPipe, _ = cmd.StdinPipe()
+				return
 			},
 			Start: func() error {
 				// TODO: wire stderr to a logger

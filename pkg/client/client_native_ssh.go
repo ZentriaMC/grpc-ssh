@@ -96,11 +96,13 @@ func (s *NativeSSHDialer) Dialer() GRPCDialer {
 		_ = yamux.ErrConnectionReset
 
 		return NewWrappedConn(WrappedConnAdapter{
-			SetReadPipe: func(r io.Reader) {
-				session.Stdin = r
+			GetReadPipe: func() (stdoutPipe io.ReadCloser) {
+				stdoutPipe, session.Stdout = io.Pipe()
+				return
 			},
-			SetWritePipe: func(w io.Writer) {
-				session.Stdout = w
+			GetWritePipe: func() (stdinPipe io.WriteCloser) {
+				session.Stdin, stdinPipe = io.Pipe()
+				return
 			},
 			Start: func() error {
 				// TODO: wire stderr to a logger
