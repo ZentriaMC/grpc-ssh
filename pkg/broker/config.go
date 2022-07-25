@@ -129,10 +129,11 @@ type TLSConfig struct {
 	CA          string `json:"ca" yaml:"ca"`
 	Certificate string `json:"certificate" yaml:"certificate"`
 	Key         string `json:"key" yaml:"key"`
+	SkipVerify  bool   `json:"skip_verify" yaml:"skip_verify"`
 }
 
 func (t TLSConfig) String() string {
-	return "TLSConfig(sensitive)"
+	return fmt.Sprintf("TLSConfig(sensitive, skipVerify=%t)", t.SkipVerify)
 }
 
 type ServiceURL struct {

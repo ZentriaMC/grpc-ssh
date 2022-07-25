@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -68,12 +70,12 @@ func entrypoint(args []string, sshForceCommand bool) (err error) {
 		return
 	}
 
-	err = openConnection(url)
+	err = openConnection(url, nil)
 
 	return
 }
 
-func openConnection(targetURL string) (err error) {
+func openConnection(targetURL string, tlsConfig *broker.TLSConfig) (err error) {
 	var parsed *url.URL
 	if parsed, err = url.Parse(targetURL); err != nil {
 		return
@@ -96,25 +98,64 @@ func openConnection(targetURL string) (err error) {
 		return
 	}
 
-	_ = requiresTLS
-
-	fmt.Fprintf(os.Stderr, "connecting=%s\n", address)
+	fmt.Fprintf(os.Stderr, "connecting=%s protocol=%s\n", address, protocol)
 
 	var conn net.Conn
-	if conn, err = net.Dial(protocol, address); err != nil {
-		return
+	if requiresTLS && (tlsConfig == nil || tlsConfig.FromRemote == false) {
+		cfg := &tls.Config{
+			InsecureSkipVerify: tlsConfig != nil && tlsConfig.SkipVerify,
+		}
+
+		if tlsConfig != nil && tlsConfig.CA != "" {
+			cfg.RootCAs = x509.NewCertPool()
+
+			var buf []byte
+			if buf, err = ioutil.ReadFile(tlsConfig.CA); err != nil {
+				err = fmt.Errorf("unable to load CA certificate: %w", err)
+				return
+			}
+
+			if !cfg.RootCAs.AppendCertsFromPEM(buf) {
+				err = fmt.Errorf("unable to load CA certificate: %w", errors.New("no certificates were found"))
+				return
+			}
+		}
+
+		if tlsConfig != nil && tlsConfig.Certificate != "" && tlsConfig.Key != "" {
+
+			// Set up certificate
+			var cert tls.Certificate
+			if cert, err = tls.LoadX509KeyPair(tlsConfig.Certificate, tlsConfig.Key); err != nil {
+				return
+			}
+			cfg.Certificates = append(cfg.Certificates, cert)
+		}
+
+		if conn, err = tls.Dial(protocol, address, cfg); err != nil {
+			return
+		}
+	} else {
+		if conn, err = net.Dial(protocol, address); err != nil {
+			return
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		_, _ = io.Copy(conn, os.Stdin)
+		_, err := io.Copy(conn, os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "stdin copy err=%s\n", err)
+		}
 		cancel()
 	}()
 
 	go func() {
-		_, _ = io.Copy(os.Stdout, conn)
+		_, err := io.Copy(os.Stdout, conn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "stdout copy err=%s\n", err)
+		}
 		cancel()
 	}()
 
