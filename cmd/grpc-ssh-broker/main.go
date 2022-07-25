@@ -101,7 +101,7 @@ func openConnection(targetURL string, tlsConfig *broker.TLSConfig) (err error) {
 	fmt.Fprintf(os.Stderr, "connecting=%s protocol=%s\n", address, protocol)
 
 	var conn net.Conn
-	if requiresTLS && (tlsConfig == nil || tlsConfig.FromRemote == false) {
+	if requiresTLS && (tlsConfig == nil || !tlsConfig.FromRemote) {
 		cfg := &tls.Config{
 			InsecureSkipVerify: tlsConfig != nil && tlsConfig.SkipVerify,
 		}
