@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
+	"os/user"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -35,12 +35,17 @@ func entrypoint() (err error) {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	var u *user.User
 	var dialer client.SSHDialer
 	var conn *grpc.ClientConn
 	var res *pb.HelloReply
 
+	if u, err = user.Current(); err != nil {
+		return
+	}
+
 	dialer, err = client.NewDialer(client.SSHConnectionDetails{
-		User:        "mark",
+		User:        u.Username,
 		Hostname:    "127.0.0.1",
 		Port:        22,
 		EnableAgent: true,
@@ -63,13 +68,13 @@ func entrypoint() (err error) {
 	c := pb.NewGreeterClient(conn)
 
 	res, err = c.SayHello(ctx, &pb.HelloRequest{
-		Name: "mark",
+		Name: u.Name,
 	})
 	if err != nil {
 		return
 	}
 
-	fmt.Printf("%+v\n", res)
+	zap.L().Info("got reply", zap.String("message", res.Message))
 
 	return
 }
