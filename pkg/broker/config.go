@@ -12,7 +12,7 @@ type Configuration struct {
 	cache sync.Map `json:"-" yaml:"-"`
 }
 
-func (c *Configuration) DetermineTargetURL(serviceName string, grpcServicePath string) (url string, ok bool) {
+func (c *Configuration) DetermineTargetURL(serviceName string) (url string, ok bool) {
 	g := func(key string) (string, bool) {
 		v, ok := c.cache.Load(key)
 		if ok {
@@ -21,16 +21,8 @@ func (c *Configuration) DetermineTargetURL(serviceName string, grpcServicePath s
 		return "", false
 	}
 
-	// Check if we have service in the cache
-	key1 := fmt.Sprintf("bypath::%s::%s", serviceName, grpcServicePath)
-	if grpcServicePath != "" {
-		if url, ok = g(key1); ok {
-			return
-		}
-	}
-
-	key2 := fmt.Sprintf("byservice::%s", serviceName)
-	if url, ok = g(key2); ok {
+	key := fmt.Sprintf("byservice::%s", serviceName)
+	if url, ok = g(key); ok {
 		return
 	}
 
@@ -43,51 +35,26 @@ func (c *Configuration) DetermineTargetURL(serviceName string, grpcServicePath s
 		}
 	}
 
-	if grpcServicePath != "" {
-		for _, s := range service.URLs {
-			for _, path := range s.Paths {
-				if path == grpcServicePath {
-					url = s.URL
-					break
-				}
-			}
-		}
-
-		if url != "" {
-			ok = true
-			c.cache.Store(key1, url)
-			return
-		}
-	}
-
 	if url = service.URL; url != "" {
 		ok = true
-		c.cache.Store(key2, url)
+		c.cache.Store(key, url)
 	}
 
 	return
 }
 
 type Service struct {
-	serviceBase `yaml:",inline"`
-	Name        string       `json:"name" yaml:"name"`
-	URLs        []ServiceURL `json:"urls" yaml:"urls"`
+	Name    string              `json:"name" yaml:"name"`
+	URL     string              `json:"url" yaml:"url"`
+	TLS     *TLSConfig          `json:"tls" yaml:"tls"`
+	Header  map[string][]string `json:"header" yaml:"header"`
+	Trailer map[string][]string `json:"trailer" yaml:"trailer"`
 }
 
 func (s Service) String() string {
 	var targetInfo strings.Builder
-	if len(s.URLs) > 0 {
-		var services []string
-		for _, s := range s.URLs {
-			services = append(services, s.String())
-		}
-		targetInfo.WriteString("to=[")
-		targetInfo.WriteString(strings.Join(services, ", "))
-		targetInfo.WriteString("]")
-	} else {
-		targetInfo.WriteString("to=")
-		targetInfo.WriteString(s.URL)
-	}
+	targetInfo.WriteString("to=")
+	targetInfo.WriteString(s.URL)
 
 	if t := s.TLS; t != nil {
 		targetInfo.WriteString(", tls=")
@@ -117,13 +84,6 @@ func (s Service) String() string {
 	return fmt.Sprintf("Service(name=%s, %s)", s.Name, targetInfo.String())
 }
 
-type serviceBase struct {
-	URL     string              `json:"url" yaml:"url"`
-	TLS     *TLSConfig          `json:"tls" yaml:"tls"`
-	Header  map[string][]string `json:"header" yaml:"header"`
-	Trailer map[string][]string `json:"trailer" yaml:"trailer"`
-}
-
 type TLSConfig struct {
 	FromRemote  bool   `json:"from_remote" yaml:"from_remote"`
 	CA          string `json:"ca" yaml:"ca"`
@@ -134,17 +94,4 @@ type TLSConfig struct {
 
 func (t TLSConfig) String() string {
 	return fmt.Sprintf("TLSConfig(sensitive, skipVerify=%t)", t.SkipVerify)
-}
-
-type ServiceURL struct {
-	serviceBase `yaml:",inline"`
-	Paths       []string `json:"paths" yaml:"paths"`
-}
-
-func (s ServiceURL) String() string {
-	var buf strings.Builder
-	buf.WriteString(strings.Join(s.Paths, "; "))
-	buf.WriteString(" => ")
-	buf.WriteString(s.URL)
-	return buf.String()
 }

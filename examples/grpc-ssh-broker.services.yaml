@@ -6,16 +6,6 @@ services:
   - name: "routeguide"
     url: "http://127.0.0.1:50052"
 
-  # maybe merging multiple services together could be useful too (could use nginx/envoy)?
-  - name: "merged"
-    urls:
-      - paths: [ "/helloworld.Greeter" ]
-        url: "http://127.0.0.1:50051"
-
-      - paths: [ "/routeguide.RouteGuide" ]
-        url: "http://127.0.0.1:50052"
-
-
   # possibly needed in future
   - name: "complex"
     url: "https://127.0.0.1:50053"

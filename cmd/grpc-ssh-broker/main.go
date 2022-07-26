@@ -75,7 +75,7 @@ func entrypoint(args []string, sshForceCommand bool) (err error) {
 		return
 	}
 
-	url, ok := config.DetermineTargetURL(serviceName, "")
+	url, ok := config.DetermineTargetURL(serviceName)
 	if !ok {
 		err = NewExitError(fmt.Errorf("no such service: '%s'", serviceName), 2)
 		return

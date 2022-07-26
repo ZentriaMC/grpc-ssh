@@ -20,7 +20,7 @@ func TestParseConfig(t *testing.T) {
 		panic(err)
 	}
 
-	spew.Dump(config)
+	spew.Dump(&config)
 }
 
 func TestURLDetermination(t *testing.T) {
@@ -34,18 +34,17 @@ func TestURLDetermination(t *testing.T) {
 		panic(err)
 	}
 
-	test := func(service, grpc string) {
-		url, ok := config.DetermineTargetURL(service, grpc)
+	test := func(service string) {
+		url, ok := config.DetermineTargetURL(service)
 		if !ok {
-			t.Errorf("service='%s', grpc='%s' failed to compute", service, grpc)
+			t.Errorf("service='%s' failed to compute", service)
 		}
-		t.Logf("service='%s', grpc='%s' => '%s'", service, grpc, url)
+		t.Logf("service='%s' => '%s'", service, url)
 	}
 
-	test("helloworld", "")
-	test("routeguide", "")
-	test("merged", "/helloworld.Greeter")
-	test("merged", "/routeguide.RouteGuide")
+	test("helloworld")
+	test("routeguide")
+	test("merged")
 
-	spew.Dump(config)
+	spew.Dump(&config)
 }
